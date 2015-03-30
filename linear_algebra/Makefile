@@ -4,14 +4,20 @@ BIN_DIR = bin
 
 INCLUDE_DIR = include
 
-objects = main.o matrix.o
+objects = main.o matrix.o cmd.o handler.o
 
 all: $(objects)
 	gcc -o $(BIN_DIR)/matkit $(objects)
 	rm *.o
 
-main.o: main.c matrix.h
+main.o: main.c matrix.h handler.h
 	gcc -pg -g -c $< -I$(INCLUDE_DIR)
 
 matrix.o: matrix.c matrix.h
+	gcc -pg -g -c $< -I$(INCLUDE_DIR)
+
+cmd.o: cmd.c cmd.h
+	gcc -pg -g -c $< -I$(INCLUDE_DIR)
+
+handler.o: handler.c handler.h cmd.h
 	gcc -pg -g -c $< -I$(INCLUDE_DIR)
