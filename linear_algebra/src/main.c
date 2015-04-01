@@ -32,11 +32,10 @@ main(int argc, char *argv[])
     while(1){
         printf(PROMPT);
         fgets(cmd, CMD_LEN, stdin);
-        ret = handler_run(h, cmd);
+        ret = handler_run(h, cmd, m);
         if(ERR_QUIT == ret){
             break;
         }else if(ERR_BAD_CMD == ret){
-            printf("Bad cmd\n");
             handler_print(h);
         }
     }
@@ -55,20 +54,3 @@ _print_help(char *argv[])
 }
 
 
-static  
-void    
-_display_matrix(matrix_t m)
-{
-    int index_row, index_col;
-    ssize_t row_cnt, col_cnt;
-    
-    row_cnt = matrix_row_cnt(m);
-    col_cnt = matrix_col_cnt(m);
-   
-    for(index_row = 0; index_row < row_cnt; index_row++){
-        for(index_col = 0; index_col < col_cnt; index_col++){
-            printf("%g\t", matrix_get(m, index_row, index_col));
-        }
-        printf("\n");
-    }
-}

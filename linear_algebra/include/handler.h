@@ -13,7 +13,7 @@ typedef struct T *T;
 extern  T       handler_new     ();
 extern  void    handler_free    (T *handler);
 extern  void    handler_print   ();
-extern  int     handler_run     (T handler, char *cmdline);
+extern  int     handler_run     (T handler, char *cmdline, matrix_t matrix);
 
 #undef T
 #endif //__INCLUDE_HANDLER__

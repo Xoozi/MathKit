@@ -1,5 +1,4 @@
 #include<stdlib.h>
-#include<stdarg.h>
 #include<string.h>
 
 #include"matrix.h"
@@ -36,8 +35,8 @@ matrix_new
 
     ret_val->row_cnt    = row;
     ret_val->col_cnt    = col;
-    ret_val->data       = malloc((row + 1) * col * sizeof(double));
-    ret_val->tmp        = ret_val->data + row * col;
+    ret_val->data       = malloc(row * col * sizeof(double));
+    ret_val->tmp        = malloc(col * sizeof(double));
     return ret_val;
 }
 
@@ -46,7 +45,7 @@ matrix_free
 (T *matrix)
 {
     free((*matrix)->data);
-
+    free((*matrix)->tmp);
     free(*matrix);
 }
 
@@ -66,9 +65,8 @@ matrix_col_cnt
 
 T       
 matrix_set_row  
-(T matrix, ssize_t row, double x,...)
+(T matrix, ssize_t row, double* cols)
 {
-    va_list ap;
     int index;
     ssize_t col_cnt;
     double *row_start;
@@ -76,15 +74,9 @@ matrix_set_row
 
     col_cnt = matrix->col_cnt;
     row_start = matrix->data + row * col_cnt;
-    index = 0;
-    va_start(ap, x);
-    for(; x; x = va_arg(ap, double)){
-        if(index >= col_cnt)
-            break;
-        *(row_start+index) = x;
-        index++;
+    for(index = 0; index < col_cnt; index++){
+        *(row_start+index) = *(cols+index);
     }
-    va_end(ap);
 
     if(index >= col_cnt)
         return NULL;
@@ -161,15 +153,15 @@ matrix_add_r2r_mul
 (T matrix, ssize_t target, ssize_t other, double factor)
 {
     int index;
-    double *target_start;
+    double *target_start, *tmp;
     target_start = _get_rowstart(matrix, target);
+    tmp = matrix->tmp;
 
     _copy_row(matrix, other);
-    matrix_row_mul(matrix, matrix->row_cnt + 1, factor);
 
     for(index = 0; index < matrix->col_cnt; index++){
        *(target_start + index) = *(target_start + index)
-           + *(matrix->tmp + index);
+           + (*(tmp + index) * factor);
     }
 
     return matrix;
@@ -180,15 +172,15 @@ matrix_add_r2r_dev
 (T matrix, ssize_t target, ssize_t other, double divisor)
 {
     int index;
-    double *target_start;
+    double *target_start, *tmp;
     target_start = _get_rowstart(matrix, target);
+    tmp = matrix->tmp;
 
     _copy_row(matrix, other);
-    matrix_row_dev(matrix, matrix->row_cnt + 1, divisor);
 
     for(index = 0; index < matrix->col_cnt; index++){
        *(target_start + index) = *(target_start + index)
-           + *(matrix->tmp + index);
+           + (*(tmp + index) / divisor);
     }
 
     return matrix;

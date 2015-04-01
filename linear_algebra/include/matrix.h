@@ -13,7 +13,7 @@ extern  void    matrix_free         (T *matrix);
 extern  ssize_t matrix_row_cnt      (T matrix);
 extern  ssize_t matrix_col_cnt      (T matrix);
 
-extern  T       matrix_set_row      (T matrix, ssize_t row, double x,...);
+extern  T       matrix_set_row      (T matrix, ssize_t row, double* cols);
 extern  T       matrix_exchange     (T matrix, ssize_t row1, ssize_t row2);
 extern  T       matrix_row_mul      (T matrix, ssize_t row, double factor);
 extern  T       matrix_row_dev      (T matrix, ssize_t row, double divisor);

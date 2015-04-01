@@ -1,3 +1,4 @@
+#include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
 #include"cmd.h"
@@ -17,6 +18,7 @@ cmd_new(char *cmd, int (*fun)(char* arg, void *cl))
 
     ret_val = malloc(sizeof(*ret_val));
 
+
     ret_val->fun = fun;
     strncpy(ret_val->cmd, cmd, 32);
     return ret_val;
@@ -32,7 +34,7 @@ cmd_free(T *cmd)
 int     
 cmd_cmp(T cmd, char *cmd_str)
 {
-    return stricmp(cmd_str, cmd->cmd);
+    return strcmp(cmd_str, cmd->cmd);
 }
 
 int     
