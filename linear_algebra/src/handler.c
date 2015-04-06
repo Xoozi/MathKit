@@ -2,6 +2,7 @@
 #include<stdio.h>
 #include<string.h>
 
+#include"table.h"
 #include"matrix.h"
 #include"handler.h"
 #include"cmd.h"
@@ -90,23 +91,26 @@ handler_print()
 {
     int index;
     printf("commands:\n"
-    "   h                      (print this)\n"
-    "   q                      (exit matkit)\n"
-    "   d                      (display matrix)\n"
-    "   rm    row factor       (multiply factor to on row)\n"
-    "   rd    row divisor      (row divided by divisor)\n"
-    "   ar    row1 row2        (add row2 to row1, update row1'values)\n"
-    "   arm   row1 row2 factor (multipy factor to row2 then add it to row1)\n"
-    "   ard   row1 row2 divisor(row2 divided by divisor then add it to row1)\n"
-    "   ex    row1 row2        (exchange row1 and row2)\n"
-    "   set   row col1 col2... (set row's cols)\n");
+    "   h                               (print this)\n"
+    "   q                               (exit matkit)\n"
+    "   li                              (list objects)\n"
+    "   d     obj_name                  (display object)\n"
+    "   mat   name row col              (create a matrix with row & col if exist will update object)\n"
+    "   vec   name len                  (create a vector with length if exist and so on)\n"
+    "   rm    [name] row factor         (matrix: multiply factor to on row)\n"
+    "   rd    [name] row divisor        (matrix: row divided by divisor)\n"
+    "   ar    [name] row1 row2          (matrix: add row2 to row1, update row1'values)\n"
+    "   arm   [name] row1 row2 factor   (matrix: multipy factor to row2 then add it to row1)\n"
+    "   ard   [name] row1 row2 divisor  (matrix: row2 divided by divisor then add it to row1)\n"
+    "   ex    [name] row1 row2          (matrix: exchange row1 and row2)\n"
+    "   set   [name] row col1 col2...   (matrix: set row's cols)\n");
 
 }
 
 
 int     
 handler_run     
-(T handler, char *cmdline, matrix_t matrix)
+(T handler, char *cmdline, table_t obj_table)
 {
     int token, index;
     struct parse_state state;
@@ -141,12 +145,13 @@ static
 int      
 _quit(char *arg, void *cl)
 {
-    ungetc('c', stdin);
+    /*ungetc('c', stdin);
     ungetc('o', stdin);
     ungetc('c', stdin);
     ungetc('k', stdin);
     return ERR_SUC;
-    //return ERR_QUIT;
+    */
+    return ERR_QUIT;
 }
 
 static 
