@@ -1,11 +1,14 @@
 #ifndef __INCLUDE_HANDLER__
 #define __INCLUDE_HANDLER__
+#include"table.h"
 
 #define T handler_t
 
 #define CMD_LEN         1024
 #define ERR_SUC             0
 #define ERR_BAD_CMD         1
+#define ERR_NO_OBJ          2
+#define ERR_CREATE          3
 #define ERR_QUIT            -1
 
 typedef struct T *T;

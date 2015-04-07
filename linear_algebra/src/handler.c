@@ -1,8 +1,11 @@
 #include<stdlib.h>
 #include<stdio.h>
 #include<string.h>
+#include<ctype.h>
 
 #include"table.h"
+#include"type.h"
+#include"object.h"
 #include"matrix.h"
 #include"handler.h"
 #include"cmd.h"
@@ -24,8 +27,12 @@
 
 #define T_EOF 0
 #define T_TEXT 1
-#define T_NEWLINE 2
+#define T_NUM 2
+#define T_NEWLINE 3
 
+#define NAME_LEN            128
+
+static char        last_obj_name[128];
 
 struct T{
     cmd_t   *cmd_list;
@@ -39,10 +46,14 @@ struct parse_state
 };
 
 static int      _parse_cmd(struct parse_state *state);
+static int      _display_matrix(char *name, matrix_t m);
 
 static int      _help(char *arg, void *cl);
 static int      _quit(char *arg, void *cl);
+static int      _li(char *arg, void *cl);
 static int      _display(char *arg, void *cl);
+static int      _mat(char *arg, void *cl);
+static int      _vec(char *arg, void *cl);
 static int      _row_mul(char *arg, void *cl);
 static int      _row_dev(char *arg, void *cl);
 static int      _add_row(char *arg, void *cl);
@@ -70,6 +81,7 @@ handler_new()
     ret_val->cmd_list[CMD_EXCHANGE]         = cmd_new("ex", _exchange);
     ret_val->cmd_list[CMD_SET_ROW]          = cmd_new("set", _set_row);
 
+    last_obj_name[0] = 0;
     return ret_val;
 }
 
@@ -94,7 +106,7 @@ handler_print()
     "   h                               (print this)\n"
     "   q                               (exit matkit)\n"
     "   li                              (list objects)\n"
-    "   d     obj_name                  (display object)\n"
+    "   d     [name]                    (display object)\n"
     "   mat   name row col              (create a matrix with row & col if exist will update object)\n"
     "   vec   name len                  (create a vector with length if exist and so on)\n"
     "   rm    [name] row factor         (matrix: multiply factor to on row)\n"
@@ -119,13 +131,13 @@ handler_run
 
     token = _parse_cmd(&state);
     if(T_NEWLINE == token){
-        return _display(NULL, matrix);
+        return _display(NULL, obj_table);
     }else if(T_TEXT == token){
         for(index = 0; index < CNT; index++){
             cmd_t *c = (handler->cmd_list) + index;
             if(0 == cmd_cmp(handler->cmd_list[index], state.text)){
 
-                return cmd_run(handler->cmd_list[index], state.ptr, matrix);
+                return cmd_run(handler->cmd_list[index], state.ptr, obj_table);
             }
         }
         printf("unknown cmd:%s\n", state.text);
@@ -154,25 +166,155 @@ _quit(char *arg, void *cl)
     return ERR_QUIT;
 }
 
-static 
-int      
+static
+int
 _display(char *arg, void *cl)
 {
+    table_t obj_list;
+    type_t  type;
+    obj_t   obj;
+    char    *name;
+    struct parse_state state;
+    state.nexttoken = 0;
+    state.ptr = arg;
+    token = _parse_cmd(&state);
+    if(T_TEXT == token){
+        name = state.text;
+    }else if(T_NEWLINE == token && last_obj_name[0] != 0){
+        name = last_obj_name; 
+    }else{
+        return ERR_BAD_CMD;
+    }
+
+    obj_list= cl;
+    obj     = table_get(obj_list, name);
+    
+    if(null == obj){
+        return ERR_NO_OBJ;
+    }
+
+    strncpy(last_obj_name, name, NAME_LEN);
+
+    type    = obj_type(obj);
+    if(Matrix == type){
+        _display_matrix(name, obj_data(obj));
+    }
+    return ERR_SUC;
+}
+
+static 
+int      
+_li(char *arg, void *cl)
+{
+    table_t obj_list;
+    type_t  type;
+    obj_t   obj;
+    void    **array;
+    char    *name;
+    int     i;
+
+    obj_list = cl;
+
+    array = table_to_array(obj_list, NULL);
+
+    for(i = 0; array[i]; i+=2){
+        name    = array[i];
+        obj     = array[i+1];
+        type    = obj_type(obj);
+
+        if(Matrix == type){
+            _display_matrix(name, obj_data(obj));
+        }
+    }
+    free(array);
+    return ERR_SUC;
+}
+
+
+static 
+int      
+_display_matrix(char *name, matrix_t m)
+{
+
     int index_row, index_col;
     ssize_t row_cnt, col_cnt;
-    matrix_t m = cl;
-    
+
     row_cnt = matrix_row_cnt(m);
     col_cnt = matrix_col_cnt(m);
    
+    printf("Matrix [%s]:\n", name);
     for(index_row = 0; index_row < row_cnt; index_row++){
         for(index_col = 0; index_col < col_cnt; index_col++){
             printf("%g\t", matrix_get(m, index_row, index_col));
         }
         printf("\n");
     }
+}
+
+
+
+static 
+int      
+_mat(char *arg, void *cl)
+{
+    table_t     obj_list;
+    type_t      type;
+    obj_t       obj;
+    matrix_t    m;
+    int         row, col;
+    char        *name;
+    struct parse_state state;
+    state.nexttoken = 0;
+    state.ptr = arg;
+    token = _parse_cmd(&state);
+    if(T_TEXT == token){
+        name = state.text;
+    }else{
+        return ERR_BAD_CMD;
+    }
+
+
+    token = _parse_cmd(&state);
+    if(T_NUM == token){
+        row = atoi(state.text);
+    }else{
+        return ERR_BAD_CMD;
+    }
+
+    token = _parse_cmd(&state);
+    if(T_NUM == token){
+        col = atoi(state.text);
+    }else{
+        return ERR_BAD_CMD;
+    }
+
+    obj_list= cl;
+    m       = matrix_new(row, col);
+    if(NULL == m){
+        return ERR_CREATE;
+    }
+
+    table
+    
+
+    sncpy(last_obj_name, name, NAME_LEN);
+
+    type    = obj_type(obj);
+    if(Matrix == type){
+        _display_matrix(name, obj_data(obj));
+    }
     return ERR_SUC;
 }
+
+
+
+static 
+int      
+_vec(char *arg, void *cl)
+{
+
+}
+
 
 static 
 int      
@@ -391,7 +533,7 @@ static
 int      
 _parse_cmd(struct parse_state *state)
 {
-
+    int digit_count, alpha_count;
     char *x = state->ptr;
     char *s;
 
@@ -423,9 +565,14 @@ _parse_cmd(struct parse_state *state)
 textdone:
     state->ptr = x;
     *s = 0;
-    return T_TEXT;
+    if(0 != digit_count && 0 == alpha_count)
+        return T_NUM;
+    else
+        return T_TEXT;
 text:
     state->text = s = x;
+    digit_count = 0;
+    alpha_count = 0;
 textresume:
     for (;;) {
         switch (*x) {
@@ -441,6 +588,11 @@ textresume:
             x++;
             goto textdone;
         default:
+            if(isalpha(*x)){
+                alpha_count += 1;
+            }else if(isdigit(*x)){
+                digit_count += 1;
+            }
             *s++ = *x++;
         }
     }

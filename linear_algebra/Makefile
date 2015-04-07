@@ -29,5 +29,5 @@ matrix.o: matrix.c matrix.h
 cmd.o: cmd.c cmd.h
 	gcc -pg -g -c $< -I$(INCLUDE_DIR)
 
-handler.o: handler.c handler.h cmd.h matrix.h
+handler.o: handler.c handler.h cmd.h matrix.h table.h
 	gcc -pg -g -c $< -I$(INCLUDE_DIR)

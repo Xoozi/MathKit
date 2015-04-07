@@ -1,10 +1,11 @@
 #ifndef TYPE_INCLUDE
 #define TYPE_INCLUDE
 
-
 #define T type_t
 
-typedef struct T *T;
+typedef struct T{
+    char *type;
+}T; 
 
 
 const extern T Matrix;

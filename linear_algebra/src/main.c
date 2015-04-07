@@ -10,12 +10,13 @@
 int
 main(int argc, char *argv[])
 {
+    int         ret;
     char        cmd[CMD_LEN];
     table_t     obj_table;
     handler_t   h;
 
 
-    objects = table_new(0, NULL, NULL);
+    obj_table = table_new(0, NULL, NULL);
 
     h = handler_new();
 

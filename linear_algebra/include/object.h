@@ -11,6 +11,7 @@ extern T        obj_new(type_t type, void *data);
 
 extern void     obj_free(T *obj);
 extern type_t   obj_type(T obj);
+extern void *   obj_data(T obj); 
 
 #undef T
 
