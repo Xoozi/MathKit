@@ -9,14 +9,14 @@
 #define T obj_t
 
 struct T{
-    type_t  type;
+    const type_t  *type;
     void    *data;
 };
 
 
 
 T
-obj_new(type_t type, void *data)
+obj_new(const type_t *type, void *data)
 {
     T ret_val;
 
@@ -35,7 +35,7 @@ obj_free(T *obj)
 }
 
 
-type_t   
+const type_t *  
 obj_type(T obj)
 {
     return obj->type;

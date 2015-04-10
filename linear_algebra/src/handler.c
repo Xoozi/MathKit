@@ -12,7 +12,7 @@
 
 #define T handler_t
 
-#define CNT                 10
+#define CNT                 11
 
 #define CMD_HELP            0
 #define CMD_QUIT            1
@@ -24,15 +24,16 @@
 #define CMD_ADD_ROW_DIV     7
 #define CMD_EXCHANGE        8
 #define CMD_SET_ROW         9
+#define CMD_MAT             10
 
 #define T_EOF 0
 #define T_TEXT 1
 #define T_NUM 2
 #define T_NEWLINE 3
 
-#define NAME_LEN            128
 
-static char        last_obj_name[128];
+static char        _last_obj_name[KEY_LEN];
+static char        *_default_prompt = "mt";
 
 struct T{
     cmd_t   *cmd_list;
@@ -47,6 +48,7 @@ struct parse_state
 
 static int      _parse_cmd(struct parse_state *state);
 static int      _display_matrix(char *name, matrix_t m);
+static void     _set_last_name(const char *name);
 
 static int      _help(char *arg, void *cl);
 static int      _quit(char *arg, void *cl);
@@ -80,8 +82,9 @@ handler_new()
     ret_val->cmd_list[CMD_ADD_ROW_DIV]      = cmd_new("ard", _add_row_dev);
     ret_val->cmd_list[CMD_EXCHANGE]         = cmd_new("ex", _exchange);
     ret_val->cmd_list[CMD_SET_ROW]          = cmd_new("set", _set_row);
+    ret_val->cmd_list[CMD_MAT]              = cmd_new("mat", _mat);
 
-    last_obj_name[0] = 0;
+    _last_obj_name[0] = 0;
     return ret_val;
 }
 
@@ -119,6 +122,16 @@ handler_print()
 
 }
 
+const char *  
+handler_prompt   
+(T handler)
+{
+    if(strlen(_last_obj_name) <= 0){
+        return _default_prompt;
+    }else{
+        return _last_obj_name;
+    }
+}
 
 int     
 handler_run     
@@ -170,6 +183,8 @@ static
 int
 _display(char *arg, void *cl)
 {
+    printf("______________display\n");
+    int     token;
     table_t obj_list;
     type_t  type;
     obj_t   obj;
@@ -180,8 +195,8 @@ _display(char *arg, void *cl)
     token = _parse_cmd(&state);
     if(T_TEXT == token){
         name = state.text;
-    }else if(T_NEWLINE == token && last_obj_name[0] != 0){
-        name = last_obj_name; 
+    }else if(T_NEWLINE == token && _last_obj_name[0] != 0){
+        name = _last_obj_name; 
     }else{
         return ERR_BAD_CMD;
     }
@@ -189,15 +204,23 @@ _display(char *arg, void *cl)
     obj_list= cl;
     obj     = table_get(obj_list, name);
     
-    if(null == obj){
+    if(NULL == obj){
         return ERR_NO_OBJ;
     }
 
-    strncpy(last_obj_name, name, NAME_LEN);
+    _set_last_name(name);
 
     type    = obj_type(obj);
-    if(Matrix == type){
+
+    printf("&Matrix:%p, &type:%p\n", &Matrix, &type);
+
+
+    if(EQ(Matrix, type)){
+        printf("_____match type_________display\n");
         _display_matrix(name, obj_data(obj));
+    }else{
+
+        printf("_____gg type_________display\n");
     }
     return ERR_SUC;
 }
@@ -222,7 +245,7 @@ _li(char *arg, void *cl)
         obj     = array[i+1];
         type    = obj_type(obj);
 
-        if(Matrix == type){
+        if(EQ(Matrix, type)){
             _display_matrix(name, obj_data(obj));
         }
     }
@@ -257,6 +280,7 @@ static
 int      
 _mat(char *arg, void *cl)
 {
+    int         token;
     table_t     obj_list;
     type_t      type;
     obj_t       obj;
@@ -294,13 +318,14 @@ _mat(char *arg, void *cl)
         return ERR_CREATE;
     }
 
-    table
+    obj = obj_new(&Matrix, m);
     
-
-    sncpy(last_obj_name, name, NAME_LEN);
+    table_put(obj_list, name, obj);
+    
+    _set_last_name(name);
 
     type    = obj_type(obj);
-    if(Matrix == type){
+    if(EQ(Matrix, type)){
         _display_matrix(name, obj_data(obj));
     }
     return ERR_SUC;
@@ -597,4 +622,12 @@ textresume:
         }
     }
     return T_EOF;
+}
+
+
+static 
+void     
+_set_last_name(const char *name)
+{
+    strncpy(_last_obj_name, name, KEY_LEN);
 }

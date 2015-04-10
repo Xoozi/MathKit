@@ -1,32 +1,32 @@
 #include<limits.h>
 #include<stddef.h>
 #include<stdlib.h>
+#include<string.h>
 #include<assert.h>
 #include"table.h"
 
 #define T table_t
 
+
 struct T{
     int size;
-    int (*cmp)(const void *x, const void *y);
-    unsigned long (*hash)(const void *key);
     int length;
+    int (*cmp)(const char *x, const char *y);
+    unsigned long (*hash)(const char *key);
     unsigned long timestamp;
 
     struct binding{
         struct binding *link;
-        const void *key;
+        char  key[KEY_LEN];
         void *value;
     }**buckets;
 };
 
-static int cmpatom(const void *x, const void *y);
-static unsigned long hashatom(const void *key);
+static int _cmpatom(const char *x, const char *y);
+static unsigned long _hashatom(const char *key);
 
 T
-table_new(int hint,
-            int (*cmp)(const void *x, const void *y),
-            unsigned long hash(const void *key))
+table_new(int hint)
 {
     T table;
     int i;
@@ -41,9 +41,9 @@ table_new(int hint,
     table = malloc(sizeof(*table) + 
             primes[i-1] * sizeof(table->buckets[0]));
     table->size = primes[i-1];
-    table->cmp = cmp ? cmp : cmpatom;
-    table->hash = hash ? hash : hashatom;
     table->buckets = (struct binding **) (table + 1);
+    table->hash = _hashatom;
+    table->cmp  = _cmpatom;
 
     for(i = 0; i < table->size; i++)
         table->buckets[i] = NULL;
@@ -54,7 +54,7 @@ table_new(int hint,
 
 
 void *
-table_get(T table, const void *key)
+table_get(T table, const char *key)
 {
     int i;
     struct binding *p;
@@ -72,7 +72,7 @@ table_get(T table, const void *key)
 
 
 void *
-table_put(T table, const void *key, void *value)
+table_put(T table, const char *key, void *value)
 {
     int i;
     struct binding *p;
@@ -88,7 +88,7 @@ table_put(T table, const void *key, void *value)
 
     if(NULL == p){
         p = malloc(sizeof(*p));
-        p->key = key;
+        strncpy(p->key, key, KEY_LEN);
         p->link = table->buckets[i];
         table->buckets[i] = p;
         table->length++;
@@ -112,7 +112,7 @@ table_length(T table)
 
 void
 table_map(T table,
-            void (*apply)(const void *key, void **value, void *cl),
+            void (*apply)(const char *key, void **value, void *cl),
             void *cl)
 {
     int i;
@@ -132,7 +132,7 @@ table_map(T table,
 
 
 void *
-table_remove(T table, const void *key)
+table_remove(T table, const char *key)
 {
     int i;
     struct binding *p, **pp;
@@ -205,14 +205,24 @@ table_free(T *table)
 
 static
 int 
-cmpatom(const void *x, const void *y)
+_cmpatom(const char *x, const char *y)
 {
-    return x != y;
+    return strcmp(x, y);
 }
 
 static
 unsigned long
-hashatom(const void *key)
+_hashatom(const char *key)
 {
+    unsigned long hash = 0;
+    unsigned x = 0;
+
+    while(*key){
+        hash = (hash << 4) + (* key++);
+        if((x = hash & 0xF0000000L) != 0){
+            hash ^= (x >> 24);
+            hash &= ~x;
+        }
+    }
     return (unsigned long) key >> 2;
 }
