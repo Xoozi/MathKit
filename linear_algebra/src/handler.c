@@ -2,6 +2,8 @@
 #include<stdio.h>
 #include<string.h>
 #include<ctype.h>
+#include<unistd.h>
+#include<fcntl.h>
 
 #include"table.h"
 #include"type.h"
@@ -9,10 +11,11 @@
 #include"matrix.h"
 #include"handler.h"
 #include"cmd.h"
+#include"cson.h"
 
 #define T handler_t
 
-#define CNT                 11
+#define CNT                 14
 
 #define CMD_HELP            0
 #define CMD_QUIT            1
@@ -25,6 +28,9 @@
 #define CMD_EXCHANGE        8
 #define CMD_SET_ROW         9
 #define CMD_MAT             10
+#define CMD_LI              11
+#define CMD_DUMP            12
+#define CMD_LOAD            13
 
 #define T_EOF 0
 #define T_TEXT 1
@@ -49,13 +55,18 @@ struct parse_state
 static int      _parse_cmd(struct parse_state *state);
 static int      _display_matrix(char *name, matrix_t m);
 static void     _set_last_name(const char *name);
+static void     _dump_matrix(CSON *array, const char *name, matrix_t m);
 
 static int      _help(char *arg, void *cl);
 static int      _quit(char *arg, void *cl);
 static int      _li(char *arg, void *cl);
 static int      _display(char *arg, void *cl);
+static int      _dump(char *arg, void *cl);
+static int      _load(char *arg, void *cl);
 static int      _mat(char *arg, void *cl);
 static int      _vec(char *arg, void *cl);
+
+static obj_t    _get_select_obj(void *cl);
 static int      _row_mul(char *arg, void *cl);
 static int      _row_dev(char *arg, void *cl);
 static int      _add_row(char *arg, void *cl);
@@ -83,6 +94,9 @@ handler_new()
     ret_val->cmd_list[CMD_EXCHANGE]         = cmd_new("ex", _exchange);
     ret_val->cmd_list[CMD_SET_ROW]          = cmd_new("set", _set_row);
     ret_val->cmd_list[CMD_MAT]              = cmd_new("mat", _mat);
+    ret_val->cmd_list[CMD_LI]               = cmd_new("li", _li);
+    ret_val->cmd_list[CMD_DUMP]             = cmd_new("dump", _dump);
+    ret_val->cmd_list[CMD_LOAD]               = cmd_new("load", _load);
 
     _last_obj_name[0] = 0;
     return ret_val;
@@ -110,15 +124,17 @@ handler_print()
     "   q                               (exit matkit)\n"
     "   li                              (list objects)\n"
     "   d     [name]                    (display object)\n"
+    "   dump  filename                  (dump objects to file)\n"
+    "   load  filename                  (load objects from file)\n"
     "   mat   name row col              (create a matrix with row & col if exist will update object)\n"
     "   vec   name len                  (create a vector with length if exist and so on)\n"
-    "   rm    [name] row factor         (matrix: multiply factor to on row)\n"
-    "   rd    [name] row divisor        (matrix: row divided by divisor)\n"
-    "   ar    [name] row1 row2          (matrix: add row2 to row1, update row1'values)\n"
-    "   arm   [name] row1 row2 factor   (matrix: multipy factor to row2 then add it to row1)\n"
-    "   ard   [name] row1 row2 divisor  (matrix: row2 divided by divisor then add it to row1)\n"
-    "   ex    [name] row1 row2          (matrix: exchange row1 and row2)\n"
-    "   set   [name] row col1 col2...   (matrix: set row's cols)\n");
+    "   rm    row factor                (matrix: multiply factor to on row)\n"
+    "   rd    row divisor               (matrix: row divided by divisor)\n"
+    "   ar    row1 row2                 (matrix: add row2 to row1, update row1'values)\n"
+    "   arm   row1 row2 factor          (matrix: multipy factor to row2 then add it to row1)\n"
+    "   ard   row1 row2 divisor         (matrix: row2 divided by divisor then add it to row1)\n"
+    "   ex    row1 row2                 (matrix: exchange row1 and row2)\n"
+    "   set   row col1 col2...          (matrix: set row's cols)\n");
 
 }
 
@@ -179,14 +195,232 @@ _quit(char *arg, void *cl)
     return ERR_QUIT;
 }
 
+
+static 
+void
+_dump_matrix(CSON *array, const char *name, matrix_t m)
+{
+    int     index_row, index_col;
+    int     row_cnt, col_cnt;
+    CSON    *mson;
+    CSON    *nums;
+
+    mson = CSON_CreateObject();
+    nums = CSON_CreateArray();
+    row_cnt = matrix_row_cnt(m);
+    col_cnt = matrix_col_cnt(m);
+    CSON_AddStringToObject(mson, "name", name);
+    CSON_AddStringToObject(mson, "type", "matrix");
+    CSON_AddNumberToObject(mson, "row", row_cnt);
+    CSON_AddNumberToObject(mson, "col", col_cnt);
+    
+    for(index_row = 0; index_row < row_cnt; index_row++){
+        for(index_col = 0; index_col < col_cnt; index_col++){
+            CSON_AddNumberToArray(nums,matrix_get(m, index_row, index_col));
+        }
+    }
+    CSON_AddItemToObject(mson, "nums", nums); 
+    CSON_AddItemToArray(array, mson);
+}
+
+static
+void
+_load_matrix(CSON *jm, table_t obj_list)
+{
+    int         index_row, index_col;
+    int         row_cnt, col_cnt;
+    int         offset;
+    obj_t       obj;
+    CSON        *name;
+    CSON        *row;
+    CSON        *col;
+    CSON        *nums;
+    CSON        *num;
+    matrix_t    m;
+    
+    name = CSON_GetObjectItem(jm ,"name");
+    row  = CSON_GetObjectItem(jm ,"row");
+    col  = CSON_GetObjectItem(jm ,"col");
+    nums = CSON_GetObjectItem(jm, "nums");
+
+    row_cnt = row->valueint;
+    col_cnt = col->valueint;
+
+    m = matrix_new(row_cnt, col_cnt);
+
+    double  row_content[col_cnt];
+    for(index_row = 0; index_row < row_cnt; index_row++){
+        offset = index_row * col_cnt;
+        for(index_col = 0; index_col < col_cnt; index_col++){
+            num = CSON_GetArrayItem(nums, offset + index_col);
+            row_content[index_col] = num->valuedouble;
+        }
+        matrix_set_row(m, index_row, row_content);
+    }
+    obj = obj_new(&Matrix, m);
+    table_put(obj_list, name->valuestring, obj);
+}
+
+static 
+void
+_load_object(CSON *array, int pos, table_t obj_list)
+{
+    CSON    *oson;
+    CSON    *type;
+    oson = CSON_GetArrayItem(array, pos);
+    type = CSON_GetObjectItem(oson ,"type");
+    if(0 == strcmp("matrix", type->valuestring)){
+        _load_matrix(oson, obj_list);
+    }
+}
+
+static 
+int      
+_dump(char *arg, void *cl)
+{
+    int     ret_val;
+    table_t obj_list;
+    obj_t   obj;
+    size_t  write_num;
+    void    **array;
+    char    *name;
+    int     out_fd;
+    int     open_flag;
+    int     file_perm;
+    int     i;
+    int     token;
+    CSON    *root;
+    char    *dump;
+    char    *file;
+    struct parse_state state;
+
+    ret_val = ERR_SUC;
+
+    state.nexttoken = 0;
+    state.ptr = arg;
+    token = _parse_cmd(&state);
+    if(T_TEXT == token){
+        file = state.text;
+    }else{
+        ret_val = ERR_BAD_CMD;
+        goto EXIT_NO_RELEASE;
+    }
+
+
+
+    obj_list = cl;
+    array = table_to_array(obj_list, NULL);
+
+    root = CSON_CreateArray();
+    for(i = 0; array[i]; i+=2){
+        name    = array[i];
+        obj     = array[i+1];
+
+        if(obj_check_type(obj, &Matrix)){
+            _dump_matrix(root, name, obj_data(obj));
+        }
+    }
+    dump = CSON_Print(root);
+    printf("dump to :\t%s\n%s\n", file, dump);
+    write_num = strlen(dump);
+    open_flag = O_CREAT | O_WRONLY | O_TRUNC;
+    file_perm = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
+    out_fd  = open(file, open_flag, file_perm);
+    if(-1 == out_fd){
+        ret_val = ERR_IO;
+        goto EXIT_RELEASE;
+    }
+    if(write_num != write(out_fd, dump, write_num)){
+        ret_val = ERR_IO;
+        goto EXIT_RELEASE;
+    }
+    if(-1 == close(out_fd)){
+        ret_val = ERR_IO;
+        goto EXIT_RELEASE;
+    }
+
+EXIT_RELEASE:
+    free(array);
+    CSON_Delete(root);
+    free(dump);
+
+EXIT_NO_RELEASE:
+    return ret_val;
+}
+
+
+static 
+int      
+_load(char *arg, void *cl)
+{
+    int     ret_val;
+    size_t  size;
+    int     cnt;
+    int     in_fd;
+    int     i;
+    int     token;
+    CSON    *root;
+    char    *buf;
+    char    *file;
+    struct parse_state state;
+
+    ret_val = ERR_SUC;
+
+    state.nexttoken = 0;
+    state.ptr = arg;
+    token = _parse_cmd(&state);
+    if(T_TEXT == token){
+        file = state.text;
+    }else{
+        ret_val = ERR_BAD_CMD;
+        goto EXIT_NO_RELEASE;
+    }
+
+
+    in_fd  = open(file, O_RDONLY);
+    if(-1 == in_fd){
+        ret_val = ERR_IO;
+        goto EXIT_NO_RELEASE;
+    }
+     
+    if(-1 == (size = lseek(in_fd, 0, SEEK_END))){
+        ret_val = ERR_IO;
+        goto EXIT_NO_RELEASE;
+    }
+    buf = malloc(size); 
+    if(-1 == lseek(in_fd, 0, SEEK_SET)){
+        ret_val = ERR_IO;
+        goto EXIT_RELEASE;
+    }
+    if(size != read(in_fd, buf, size)){
+        ret_val = ERR_IO;
+        goto EXIT_RELEASE;
+    }
+    if(-1 == close(in_fd)){
+        ret_val = ERR_IO;
+        goto EXIT_RELEASE;
+    }
+
+    root = CSON_Parse(buf);
+    cnt = CSON_GetArraySize(root);
+    for(i = 0; i < cnt; i++){
+        _load_object(root, i, cl);
+    }
+
+EXIT_RELEASE:
+    free(buf);
+    CSON_Delete(root);
+
+EXIT_NO_RELEASE:
+    return ret_val;
+}
+
 static
 int
 _display(char *arg, void *cl)
 {
-    printf("______________display\n");
     int     token;
     table_t obj_list;
-    type_t  type;
     obj_t   obj;
     char    *name;
     struct parse_state state;
@@ -195,7 +429,7 @@ _display(char *arg, void *cl)
     token = _parse_cmd(&state);
     if(T_TEXT == token){
         name = state.text;
-    }else if(T_NEWLINE == token && _last_obj_name[0] != 0){
+    }else if(T_NEWLINE == token || T_EOF == token){
         name = _last_obj_name; 
     }else{
         return ERR_BAD_CMD;
@@ -210,17 +444,8 @@ _display(char *arg, void *cl)
 
     _set_last_name(name);
 
-    type    = obj_type(obj);
-
-    printf("&Matrix:%p, &type:%p\n", &Matrix, &type);
-
-
-    if(EQ(Matrix, type)){
-        printf("_____match type_________display\n");
+    if(obj_check_type(obj, &Matrix)){
         _display_matrix(name, obj_data(obj));
-    }else{
-
-        printf("_____gg type_________display\n");
     }
     return ERR_SUC;
 }
@@ -230,7 +455,6 @@ int
 _li(char *arg, void *cl)
 {
     table_t obj_list;
-    type_t  type;
     obj_t   obj;
     void    **array;
     char    *name;
@@ -243,9 +467,8 @@ _li(char *arg, void *cl)
     for(i = 0; array[i]; i+=2){
         name    = array[i];
         obj     = array[i+1];
-        type    = obj_type(obj);
 
-        if(EQ(Matrix, type)){
+        if(obj_check_type(obj, &Matrix)){
             _display_matrix(name, obj_data(obj));
         }
     }
@@ -282,7 +505,7 @@ _mat(char *arg, void *cl)
 {
     int         token;
     table_t     obj_list;
-    type_t      type;
+    type_t      *type;
     obj_t       obj;
     matrix_t    m;
     int         row, col;
@@ -324,8 +547,7 @@ _mat(char *arg, void *cl)
     
     _set_last_name(name);
 
-    type    = obj_type(obj);
-    if(EQ(Matrix, type)){
+    if(obj_check_type(obj, &Matrix)){
         _display_matrix(name, obj_data(obj));
     }
     return ERR_SUC;
@@ -342,10 +564,38 @@ _vec(char *arg, void *cl)
 
 
 static 
+obj_t    
+_get_select_obj(void *cl)
+{
+    table_t obj_list;
+    obj_list= cl;
+    return table_get(obj_list, _last_obj_name);
+}
+
+static 
+matrix_t
+_get_select_matrix(void *cl)
+{
+    matrix_t m ;
+    obj_t    obj;
+    obj = _get_select_obj(cl);
+    if(NULL == obj){
+        return NULL;    
+    }if(obj_check_type(obj, &Matrix)){
+        return obj_data(obj);
+    }else{
+        return NULL;
+    }
+}
+
+static 
 int      
 _row_mul(char *arg, void *cl)
 {
-    matrix_t m = cl;
+    matrix_t m = _get_select_matrix(cl);
+    if(NULL == m){
+        return ERR_TYPE_MISSMATCH;
+    }
     ssize_t row;
     double factor;
     int token;
@@ -355,14 +605,14 @@ _row_mul(char *arg, void *cl)
     token = _parse_cmd(&state);
     if(T_NEWLINE == token){
         return ERR_BAD_CMD;
-    }else if(T_TEXT == token){
+    }else if(T_NUM == token){
         row = atoi(state.text);
     }
 
     token = _parse_cmd(&state);
     if(T_NEWLINE == token){
         return ERR_BAD_CMD;
-    }else if(T_TEXT == token){
+    }else if(T_NUM == token){
         factor  = atof(state.text);
     }
 
@@ -374,7 +624,10 @@ static
 int      
 _row_dev(char *arg, void *cl)
 {
-    matrix_t m = cl;
+    matrix_t m = _get_select_matrix(cl);
+    if(NULL == m){
+        return ERR_TYPE_MISSMATCH;
+    }
     ssize_t row;
     double divisor;
     int token;
@@ -384,14 +637,14 @@ _row_dev(char *arg, void *cl)
     token = _parse_cmd(&state);
     if(T_NEWLINE == token){
         return ERR_BAD_CMD;
-    }else if(T_TEXT == token){
+    }else if(T_NUM == token){
         row = atoi(state.text);
     }
 
     token = _parse_cmd(&state);
     if(T_NEWLINE == token){
         return ERR_BAD_CMD;
-    }else if(T_TEXT == token){
+    }else if(T_NUM == token){
         divisor  = atof(state.text);
     }
 
@@ -402,7 +655,10 @@ static
 int      
 _add_row(char *arg, void *cl)
 {
-    matrix_t m = cl;
+    matrix_t m = _get_select_matrix(cl);
+    if(NULL == m){
+        return ERR_TYPE_MISSMATCH;
+    }
     ssize_t target, other;
     int token;
     struct parse_state state;
@@ -411,14 +667,14 @@ _add_row(char *arg, void *cl)
     token = _parse_cmd(&state);
     if(T_NEWLINE == token){
         return ERR_BAD_CMD;
-    }else if(T_TEXT == token){
+    }else if(T_NUM == token){
         target = atoi(state.text);
     }
 
     token = _parse_cmd(&state);
     if(T_NEWLINE == token){
         return ERR_BAD_CMD;
-    }else if(T_TEXT == token){
+    }else if(T_NUM == token){
         other = atoi(state.text);
     }
 
@@ -429,7 +685,11 @@ static
 int      
 _add_row_mul(char *arg, void *cl)
 {
-    matrix_t m = cl;
+    matrix_t m = _get_select_matrix(cl);
+    if(NULL == m){
+        return ERR_TYPE_MISSMATCH;
+    }
+
     ssize_t target, other;
     double factor;
     int token;
@@ -439,21 +699,21 @@ _add_row_mul(char *arg, void *cl)
     token = _parse_cmd(&state);
     if(T_NEWLINE == token){
         return ERR_BAD_CMD;
-    }else if(T_TEXT == token){
+    }else if(T_NUM == token){
         target = atoi(state.text);
     }
 
     token = _parse_cmd(&state);
     if(T_NEWLINE == token){
         return ERR_BAD_CMD;
-    }else if(T_TEXT == token){
+    }else if(T_NUM == token){
         other = atoi(state.text);
     }
 
     token = _parse_cmd(&state);
     if(T_NEWLINE == token){
         return ERR_BAD_CMD;
-    }else if(T_TEXT == token){
+    }else if(T_NUM == token){
         factor  = atof(state.text);
     }
 
@@ -464,7 +724,11 @@ static
 int      
 _add_row_dev(char *arg, void *cl)
 {
-    matrix_t m = cl;
+    matrix_t m = _get_select_matrix(cl);
+    if(NULL == m){
+        return ERR_TYPE_MISSMATCH;
+    }
+
     ssize_t target, other;
     double divisor;
     int token;
@@ -474,21 +738,21 @@ _add_row_dev(char *arg, void *cl)
     token = _parse_cmd(&state);
     if(T_NEWLINE == token){
         return ERR_BAD_CMD;
-    }else if(T_TEXT == token){
+    }else if(T_NUM == token){
         target = atoi(state.text);
     }
 
     token = _parse_cmd(&state);
     if(T_NEWLINE == token){
         return ERR_BAD_CMD;
-    }else if(T_TEXT == token){
+    }else if(T_NUM == token){
         other = atoi(state.text);
     }
 
     token = _parse_cmd(&state);
     if(T_NEWLINE == token){
         return ERR_BAD_CMD;
-    }else if(T_TEXT == token){
+    }else if(T_NUM == token){
         divisor  = atof(state.text);
     }
 
@@ -499,23 +763,29 @@ static
 int      
 _exchange(char *arg, void *cl)
 {
-    matrix_t m = cl;
+    matrix_t m = _get_select_matrix(cl);
+    if(NULL == m){
+        return ERR_TYPE_MISSMATCH;
+    }
+
     ssize_t row1, row2;
     int token;
     struct parse_state state;
+
+
     state.nexttoken = 0;
     state.ptr = arg;
     token = _parse_cmd(&state);
     if(T_NEWLINE == token){
         return ERR_BAD_CMD;
-    }else if(T_TEXT == token){
+    }else if(T_NUM == token){
         row1 = atoi(state.text);
     }
 
     token = _parse_cmd(&state);
     if(T_NEWLINE == token){
         return ERR_BAD_CMD;
-    }else if(T_TEXT == token){
+    }else if(T_NUM == token){
         row2 = atoi(state.text);
     }
 
@@ -526,7 +796,11 @@ static
 int      
 _set_row(char *arg, void *cl)
 {
-    matrix_t m = cl;
+    matrix_t m = _get_select_matrix(cl);
+    if(NULL == m){
+        return ERR_TYPE_MISSMATCH;
+    }
+
     ssize_t row, col_cnt;
     col_cnt = matrix_col_cnt(m);
     double cols[col_cnt];
@@ -537,7 +811,7 @@ _set_row(char *arg, void *cl)
     token = _parse_cmd(&state);
     if(T_NEWLINE == token){
         return ERR_BAD_CMD;
-    }else if(T_TEXT == token){
+    }else if(T_NUM == token){
         row = atoi(state.text);
     }
 
@@ -545,7 +819,7 @@ _set_row(char *arg, void *cl)
         token = _parse_cmd(&state);
         if(T_NEWLINE == token){
             return ERR_BAD_CMD;
-        }else if(T_TEXT == token){
+        }else if(T_NUM == token){
             cols[index] = atof(state.text);
         }
     }
@@ -561,6 +835,10 @@ _parse_cmd(struct parse_state *state)
     int digit_count, alpha_count;
     char *x = state->ptr;
     char *s;
+
+    if(NULL == state->ptr){
+        return T_EOF;
+    }
 
     if (state->nexttoken) {
         int t = state->nexttoken;

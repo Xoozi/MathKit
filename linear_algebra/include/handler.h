@@ -9,6 +9,8 @@
 #define ERR_BAD_CMD         1
 #define ERR_NO_OBJ          2
 #define ERR_CREATE          3
+#define ERR_TYPE_MISSMATCH  4
+#define ERR_IO              5
 #define ERR_QUIT            -1
 
 typedef struct T *T;

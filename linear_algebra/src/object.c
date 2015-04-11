@@ -20,7 +20,6 @@ obj_new(const type_t *type, void *data)
 {
     T ret_val;
 
-
     ret_val = malloc(sizeof(*ret_val));
     ret_val->type = type;
     ret_val->data = data;
@@ -45,4 +44,10 @@ void *
 obj_data(T obj)
 {
     return obj->data;
+}
+
+int              
+obj_check_type(T obj, const type_t *type)
+{
+    return type == obj->type;
 }

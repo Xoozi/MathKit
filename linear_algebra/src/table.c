@@ -214,15 +214,22 @@ static
 unsigned long
 _hashatom(const char *key)
 {
-    unsigned long hash = 0;
-    unsigned x = 0;
+    unsigned long ret = 0;
+    long n;
+    unsigned long v;
+    int r;
 
-    while(*key){
-        hash = (hash << 4) + (* key++);
-        if((x = hash & 0xF0000000L) != 0){
-            hash ^= (x >> 24);
-            hash &= ~x;
-        }
+    if ((key == NULL) || (*key == '\0'))
+        return (ret);
+    n = 0x100;
+    while (*key) {
+        v = n | (*key);
+        n += 0x100;
+        r = (int)((v >> 2) ^ v) & 0x0f;
+        ret = (ret << r) | (ret >> (32 - r));
+        ret &= 0xFFFFFFFFL;
+        ret ^= v * v;
+        key++;
     }
-    return (unsigned long) key >> 2;
+    return ((ret >> 16) ^ ret);
 }

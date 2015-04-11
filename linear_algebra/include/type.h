@@ -4,12 +4,9 @@
 #define T type_t
 
 
-#define EQ(x, y) (&x == &y)
-
 typedef struct T{
-    char *type;
+    const char *type;
 }T; 
-
 
 
 const extern T Matrix;
