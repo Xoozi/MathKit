@@ -9,13 +9,14 @@
 #include"type.h"
 #include"object.h"
 #include"matrix.h"
+#include"vector.h"
 #include"handler.h"
 #include"cmd.h"
 #include"cson.h"
 
 #define T handler_t
 
-#define CNT                 14
+#define CNT                 18
 
 #define CMD_HELP            0
 #define CMD_QUIT            1
@@ -31,6 +32,10 @@
 #define CMD_LI              11
 #define CMD_DUMP            12
 #define CMD_LOAD            13
+#define CMD_VEC             14
+#define CMD_VSET            15
+#define CMD_VSET_AT         16
+#define CMD_VSP             17
 
 #define T_EOF 0
 #define T_TEXT 1
@@ -54,8 +59,13 @@ struct parse_state
 
 static int      _parse_cmd(struct parse_state *state);
 static int      _display_matrix(char *name, matrix_t m);
+static int      _display_vector(char *name, vector_t v);
 static void     _set_last_name(const char *name);
+static void     _dump_vector(CSON *array, const char *name, vector_t v);
 static void     _dump_matrix(CSON *array, const char *name, matrix_t m);
+static obj_t    _get_select_obj(void *cl);
+static matrix_t _get_select_matrix(void *cl);
+static vector_t _get_select_vector(void *cl);
 
 static int      _help(char *arg, void *cl);
 static int      _quit(char *arg, void *cl);
@@ -64,9 +74,7 @@ static int      _display(char *arg, void *cl);
 static int      _dump(char *arg, void *cl);
 static int      _load(char *arg, void *cl);
 static int      _mat(char *arg, void *cl);
-static int      _vec(char *arg, void *cl);
 
-static obj_t    _get_select_obj(void *cl);
 static int      _row_mul(char *arg, void *cl);
 static int      _row_dev(char *arg, void *cl);
 static int      _add_row(char *arg, void *cl);
@@ -74,6 +82,13 @@ static int      _add_row_mul(char *arg, void *cl);
 static int      _add_row_dev(char *arg, void *cl);
 static int      _exchange(char *arg, void *cl);
 static int      _set_row(char *arg, void *cl);
+
+
+
+static int      _vec(char *arg, void *cl);
+static int      _vset(char *arg, void *cl);
+static int      _vset_at(char *arg, void *cl);
+static int      _vector_scalar_product(char *arg, void *cl);
 
 T       
 handler_new()
@@ -92,12 +107,16 @@ handler_new()
     ret_val->cmd_list[CMD_ADD_ROW_MUL]      = cmd_new("arm", _add_row_mul);
     ret_val->cmd_list[CMD_ADD_ROW_DIV]      = cmd_new("ard", _add_row_dev);
     ret_val->cmd_list[CMD_EXCHANGE]         = cmd_new("ex", _exchange);
-    ret_val->cmd_list[CMD_SET_ROW]          = cmd_new("set", _set_row);
+    ret_val->cmd_list[CMD_SET_ROW]          = cmd_new("mset", _set_row);
     ret_val->cmd_list[CMD_MAT]              = cmd_new("mat", _mat);
     ret_val->cmd_list[CMD_LI]               = cmd_new("li", _li);
     ret_val->cmd_list[CMD_DUMP]             = cmd_new("dump", _dump);
-    ret_val->cmd_list[CMD_LOAD]               = cmd_new("load", _load);
+    ret_val->cmd_list[CMD_LOAD]             = cmd_new("load", _load);
 
+    ret_val->cmd_list[CMD_VEC]              = cmd_new("vec", _vec);
+    ret_val->cmd_list[CMD_VSET]             = cmd_new("vset", _vset);
+    ret_val->cmd_list[CMD_VSET_AT]          = cmd_new("vset@", _vset_at);
+    ret_val->cmd_list[CMD_VSP]              = cmd_new("vsp", _vector_scalar_product);
     _last_obj_name[0] = 0;
     return ret_val;
 }
@@ -126,15 +145,24 @@ handler_print()
     "   d     [name]                    (display object)\n"
     "   dump  filename                  (dump objects to file)\n"
     "   load  filename                  (load objects from file)\n"
+
+    "   Matrix:\n"
     "   mat   name row col              (create a matrix with row & col if exist will update object)\n"
-    "   vec   name len                  (create a vector with length if exist and so on)\n"
     "   rm    row factor                (matrix: multiply factor to on row)\n"
     "   rd    row divisor               (matrix: row divided by divisor)\n"
     "   ar    row1 row2                 (matrix: add row2 to row1, update row1'values)\n"
     "   arm   row1 row2 factor          (matrix: multipy factor to row2 then add it to row1)\n"
     "   ard   row1 row2 divisor         (matrix: row2 divided by divisor then add it to row1)\n"
     "   ex    row1 row2                 (matrix: exchange row1 and row2)\n"
-    "   set   row col1 col2...          (matrix: set row's cols)\n");
+    "   mset  row col1 col2...          (matrix: set row's cols)\n"
+
+    "   Vector:\n"
+    "   vec   name dimen                (create a vector with dimension)\n"
+    "   vset  unit1 unit2...            (vector: set units)\n"
+    "   vset@ pos unit                  (vector: set unit at position)\n"
+    "   vsp   scalar                    (vector: scalar product)\n"
+    );
+
 
 }
 
@@ -223,6 +251,29 @@ _dump_matrix(CSON *array, const char *name, matrix_t m)
     CSON_AddItemToArray(array, mson);
 }
 
+static 
+void
+_dump_vector(CSON *array, const char *name, vector_t v)
+{
+    int     index;
+    int     dimen;
+    CSON    *mson;
+    CSON    *nums;
+
+    mson = CSON_CreateObject();
+    nums = CSON_CreateArray();
+    dimen= vector_dimen(v);
+    CSON_AddStringToObject(mson, "name", name);
+    CSON_AddStringToObject(mson, "type", "vector");
+    CSON_AddNumberToObject(mson, "dimen", dimen);
+    
+    for(index = 0; index < dimen; index++){
+        CSON_AddNumberToArray(nums,vector_get(v, index));
+    }
+    CSON_AddItemToObject(mson, "nums", nums); 
+    CSON_AddItemToArray(array, mson);
+}
+
 static
 void
 _load_matrix(CSON *jm, table_t obj_list)
@@ -261,6 +312,38 @@ _load_matrix(CSON *jm, table_t obj_list)
     table_put(obj_list, name->valuestring, obj);
 }
 
+
+static
+void
+_load_vector(CSON *jm, table_t obj_list)
+{
+    int         index;
+    int         dimen_cnt;
+    obj_t       obj;
+    CSON        *name;
+    CSON        *dimen;
+    CSON        *nums;
+    CSON        *num;
+    vector_t    v;
+    
+    name    = CSON_GetObjectItem(jm ,"name");
+    dimen   = CSON_GetObjectItem(jm ,"dimen");
+    nums    = CSON_GetObjectItem(jm, "nums");
+
+    dimen_cnt = dimen->valueint;
+
+    v = vector_new(dimen_cnt);
+
+    double  units[dimen_cnt];
+    for(index = 0; index < dimen_cnt; index++){
+        num = CSON_GetArrayItem(nums, index);
+        units[index] = num->valuedouble;
+    }
+    vector_set(v, units);
+    obj = obj_new(&Vector, v);
+    table_put(obj_list, name->valuestring, obj);
+}
+
 static 
 void
 _load_object(CSON *array, int pos, table_t obj_list)
@@ -271,6 +354,8 @@ _load_object(CSON *array, int pos, table_t obj_list)
     type = CSON_GetObjectItem(oson ,"type");
     if(0 == strcmp("matrix", type->valuestring)){
         _load_matrix(oson, obj_list);
+    }else if(0 == strcmp("vector", type->valuestring)){
+        _load_vector(oson, obj_list);
     }
 }
 
@@ -318,6 +403,8 @@ _dump(char *arg, void *cl)
 
         if(obj_check_type(obj, &Matrix)){
             _dump_matrix(root, name, obj_data(obj));
+        }else if(obj_check_type(obj, &Vector)){
+            _dump_vector(root, name, obj_data(obj));
         }
     }
     dump = CSON_Print(root);
@@ -446,6 +533,8 @@ _display(char *arg, void *cl)
 
     if(obj_check_type(obj, &Matrix)){
         _display_matrix(name, obj_data(obj));
+    }else if(obj_check_type(obj, &Vector)){
+        _display_vector(name, obj_data(obj));
     }
     return ERR_SUC;
 }
@@ -470,6 +559,8 @@ _li(char *arg, void *cl)
 
         if(obj_check_type(obj, &Matrix)){
             _display_matrix(name, obj_data(obj));
+        }else if(obj_check_type(obj, &Vector)){
+            _display_vector(name, obj_data(obj));
         }
     }
     free(array);
@@ -493,6 +584,24 @@ _display_matrix(char *name, matrix_t m)
         for(index_col = 0; index_col < col_cnt; index_col++){
             printf("%g\t", matrix_get(m, index_row, index_col));
         }
+        printf("\n");
+    }
+}
+
+
+static 
+int      
+_display_vector(char *name, vector_t v)
+{
+
+    int index;
+    ssize_t dimen;
+
+    dimen = vector_dimen(v);
+   
+    printf("Vector [%s]:\n", name);
+    for(index= 0; index < dimen; index++){
+        printf("%g\t", vector_get(v, index));
         printf("\n");
     }
 }
@@ -547,20 +656,11 @@ _mat(char *arg, void *cl)
     
     _set_last_name(name);
 
-    if(obj_check_type(obj, &Matrix)){
-        _display_matrix(name, obj_data(obj));
-    }
     return ERR_SUC;
 }
 
 
 
-static 
-int      
-_vec(char *arg, void *cl)
-{
-
-}
 
 
 static 
@@ -582,6 +682,23 @@ _get_select_matrix(void *cl)
     if(NULL == obj){
         return NULL;    
     }if(obj_check_type(obj, &Matrix)){
+        return obj_data(obj);
+    }else{
+        return NULL;
+    }
+}
+
+
+static 
+vector_t 
+_get_select_vector(void *cl)
+{
+    vector_t v;
+    obj_t    obj;
+    obj = _get_select_obj(cl);
+    if(NULL == obj){
+        return NULL;    
+    }if(obj_check_type(obj, &Vector)){
         return obj_data(obj);
     }else{
         return NULL;
@@ -825,6 +942,153 @@ _set_row(char *arg, void *cl)
     }
 
     matrix_set_row(m, row, cols);
+    return ERR_SUC;
+}
+
+
+
+static 
+int      
+_vec(char *arg, void *cl)
+{
+    int         token;
+    table_t     obj_list;
+    type_t      *type;
+    obj_t       obj;
+    vector_t    v;
+    int         dimen;
+    char        *name;
+    struct parse_state state;
+    state.nexttoken = 0;
+    state.ptr = arg;
+    token = _parse_cmd(&state);
+    if(T_TEXT == token){
+        name = state.text;
+    }else{
+        return ERR_BAD_CMD;
+    }
+
+
+    token = _parse_cmd(&state);
+    if(T_NUM == token){
+        dimen = atoi(state.text);
+    }else{
+        return ERR_BAD_CMD;
+    }
+
+
+    obj_list= cl;
+    v = vector_new(dimen);
+    if(NULL == v){
+        return ERR_CREATE;
+    }
+
+    obj = obj_new(&Vector, v);
+    
+    table_put(obj_list, name, obj);
+    
+    _set_last_name(name);
+
+    return ERR_SUC;
+}
+
+
+static 
+int      
+_vset(char *arg, void *cl)
+{
+    vector_t v = _get_select_vector(cl);
+    if(NULL == v){
+        return ERR_TYPE_MISSMATCH;
+    }
+
+    ssize_t dimen;
+    dimen = vector_dimen(v);
+    double units[dimen];
+    int token, index;
+    struct parse_state state;
+    state.nexttoken = 0;
+    state.ptr = arg;
+
+    for(index = 0; index < dimen; index++){
+        token = _parse_cmd(&state);
+        if(T_NUM == token){
+            units[index] = atof(state.text);
+        }else{
+            return ERR_BAD_CMD;
+        }
+    }
+
+    vector_set(v, units);
+    return ERR_SUC;
+}
+
+
+
+static 
+int      
+_vset_at(char *arg, void *cl)
+{
+    vector_t v = _get_select_vector(cl);
+    if(NULL == v){
+        return ERR_TYPE_MISSMATCH;
+    }
+
+    ssize_t dimen, pos;
+    dimen = vector_dimen(v);
+    int token, index;
+    double unit;
+    struct parse_state state;
+    state.nexttoken = 0;
+    state.ptr = arg;
+
+    token = _parse_cmd(&state);
+    if(T_NUM == token){
+        pos = atoi(state.text);
+        if(pos >= dimen)
+            return ERR_OUT_BOUND;
+    }else{
+        return ERR_BAD_CMD;
+    }
+
+    token = _parse_cmd(&state);
+    if(T_NUM == token){
+         unit = atof(state.text);
+    }else{
+        return ERR_BAD_CMD;
+    }
+
+    vector_set_at(v, pos, unit);
+    return ERR_SUC;
+}
+
+
+
+static 
+int      
+_vector_scalar_product(char *arg, void *cl)
+{
+    vector_t v = _get_select_vector(cl);
+    if(NULL == v){
+        return ERR_TYPE_MISSMATCH;
+    }
+
+    ssize_t dimen;
+    dimen = vector_dimen(v);
+    double scalar;
+    int token, index;
+    struct parse_state state;
+    state.nexttoken = 0;
+    state.ptr = arg;
+
+    token = _parse_cmd(&state);
+    if(T_NUM == token){
+         scalar = atof(state.text);
+    }else{
+        return ERR_BAD_CMD;
+    }
+
+    vector_scalar_mul(v, scalar);
     return ERR_SUC;
 }
 

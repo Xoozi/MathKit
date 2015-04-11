@@ -1,8 +1,6 @@
 #ifndef __INCLUDE_MATRIX__
 #define __INCLUDE_MATRIX__
 
-#include"type.h"
-
 #define T matrix_t
 
 typedef struct T *T;

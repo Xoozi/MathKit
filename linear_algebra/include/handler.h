@@ -11,6 +11,7 @@
 #define ERR_CREATE          3
 #define ERR_TYPE_MISSMATCH  4
 #define ERR_IO              5
+#define ERR_OUT_BOUND       6
 #define ERR_QUIT            -1
 
 typedef struct T *T;
