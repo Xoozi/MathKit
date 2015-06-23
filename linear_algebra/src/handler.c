@@ -16,7 +16,7 @@
 
 #define T handler_t
 
-#define CNT                 18
+#define CNT                 19
 
 #define CMD_HELP            0
 #define CMD_QUIT            1
@@ -36,6 +36,7 @@
 #define CMD_VSET            15
 #define CMD_VSET_AT         16
 #define CMD_VSP             17
+#define CMD_VADD            18
 
 #define T_EOF 0
 #define T_TEXT 1
@@ -89,6 +90,7 @@ static int      _vec(char *arg, void *cl);
 static int      _vset(char *arg, void *cl);
 static int      _vset_at(char *arg, void *cl);
 static int      _vector_scalar_product(char *arg, void *cl);
+static int      _vadd(char *arg, void *cl);
 
 T       
 handler_new()
@@ -117,6 +119,7 @@ handler_new()
     ret_val->cmd_list[CMD_VSET]             = cmd_new("vset", _vset);
     ret_val->cmd_list[CMD_VSET_AT]          = cmd_new("vset@", _vset_at);
     ret_val->cmd_list[CMD_VSP]              = cmd_new("vsp", _vector_scalar_product);
+    ret_val->cmd_list[CMD_VADD]             = cmd_new("vadd", _vadd);
     _last_obj_name[0] = 0;
     return ret_val;
 }
@@ -161,6 +164,7 @@ handler_print()
     "   vset  unit1 unit2...            (vector: set units)\n"
     "   vset@ pos unit                  (vector: set unit at position)\n"
     "   vsp   scalar                    (vector: scalar product)\n"
+    "   vadd  name                      (vector: add name's vector to current)\n"
     );
 
 
@@ -1062,6 +1066,46 @@ _vset_at(char *arg, void *cl)
     return ERR_SUC;
 }
 
+static 
+int      
+_vadd(char *arg, void *cl)
+{
+    vector_t v = _get_select_vector(cl);
+    if(NULL == v){
+        return ERR_TYPE_MISSMATCH;
+    }
+
+    table_t obj_list;
+    obj_t   obj;
+    ssize_t dimen;
+    dimen = vector_dimen(v);
+    char *name;
+    int token, index;
+    struct parse_state state;
+    state.nexttoken = 0;
+    state.ptr = arg;
+
+    token = _parse_cmd(&state);
+    if(T_TEXT == token){
+         name = state.text;
+    }else{
+        return ERR_BAD_CMD;
+    }
+
+    obj_list= cl;
+    obj     = table_get(obj_list, name);
+    if(NULL == obj){
+        return ERR_NO_OBJ;
+    }
+
+    if(obj_check_type(obj, &Vector)){
+        vector_add(v, obj_data(obj));
+    }else{
+        return ERR_TYPE_MISSMATCH;
+    }
+
+    return ERR_SUC;
+}
 
 
 static 

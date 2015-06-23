@@ -23,7 +23,7 @@ object.o: object.c object.h type.h
 table.o: table.c table.h
 	gcc -pg -g -c $< -I$(INCLUDE_DIR)
 
-matrix.o: matrix.c matrix.h
+matrix.o: matrix.c matrix.h vector.h
 	gcc -pg -g -c $< -I$(INCLUDE_DIR)
 
 vector.o: vector.c vector.h

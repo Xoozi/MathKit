@@ -186,6 +186,14 @@ matrix_add_r2r_dev
     return matrix;
 }
 
+
+vector_t
+matrix_vector_mul   
+(T matrix, vector_t vector)
+{
+    return NULL;
+}
+
 double
 matrix_get
 (T matrix, ssize_t row, ssize_t col)

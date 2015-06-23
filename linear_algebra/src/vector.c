@@ -3,6 +3,7 @@
 #include<assert.h>
 
 #include"vector.h"
+#include"matrix.h"
 
 #define T vector_t
 
